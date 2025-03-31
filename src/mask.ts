@@ -7,7 +7,7 @@ import {
 } from "@maskito/kit";
 
 export default {
-    // Маска: +998 (XX) XXX-XX-XX
+    // Маска: +998 (XX) XXX XX XX
     mask: [
         "+",
         "9",
@@ -46,31 +46,62 @@ export default {
         maskitoPrefixPostprocessorGenerator("+998 "),
     ],
     preprocessors: [
-        // Автоматически «обрезаем» лишний префикс (если пользователь вставил 8 или 998)
-        createCompletePhoneInsertionPreprocessor(),
+        // Смешанный подход - для вставки полного номера добавляем специальный префикс
+        createGuidedPreprocessor(),
     ],
 } satisfies MaskitoOptions;
 
-function createCompletePhoneInsertionPreprocessor(): MaskitoPreprocessor {
-    // Убираем варианты префиксов: +998..., 998..., 8...
-    const trimPrefix = (value: string): string =>
-        value.replace(/^(\+?998|998)\s?/, "");
-    const countDigits = (value: string): number =>
-        value.replace(/\D/g, "").length;
-
+// Препроцессор с подсказкой для маски
+function createGuidedPreprocessor(): MaskitoPreprocessor {
     return ({ data, elementState }) => {
         const { selection, value } = elementState;
-        console.log(data, elementState);
-        console.log(countDigits(data) >= 12 ? trimPrefix(data) : data);
-        return {
-            // Если во «вставляемых» данных больше или равно 12 цифр, убираем префикс
-            data: countDigits(data) >= 12 ? trimPrefix(data) : data,
 
+        // Проверяем, выглядит ли это как полный номер с кодом страны
+        const digitsOnly = data.replace(/\D/g, "");
+
+        // Если это похоже на полный номер с кодом страны
+        if (digitsOnly.startsWith("998") && digitsOnly.length >= 12) {
+            // Тут хитрость: мы добавляем два специальных символа перед номером.
+            // Они будут "съедены" маской вместо первой цифры номера.
+            const phoneDigits = digitsOnly.substring(3);
+            const processedData = "##" + phoneDigits;
+
+            console.log("Обработка полного номера:", data);
+            console.log("Преобразовано в:", processedData);
+
+            return {
+                data: processedData,
+                elementState: {
+                    selection,
+                    value
+                }
+            };
+        }
+
+        // Если это просто номер без кода страны
+        if (digitsOnly.length >= 9 && !digitsOnly.startsWith("998")) {
+            // Та же хитрость: добавляем символы-заполнители
+            const processedData = "##" + digitsOnly;
+
+            console.log("Обработка номера без кода:", data);
+            console.log("Преобразовано в:", processedData);
+
+            return {
+                data: processedData,
+                elementState: {
+                    selection,
+                    value
+                }
+            };
+        }
+
+        // Для всех остальных случаев возвращаем как есть
+        return {
+            data,
             elementState: {
                 selection,
-                // Если в общем тексте уже больше 12 цифр (т.е. +998 + 9 цифр), убираем префикс
-                value: countDigits(value) > 12 ? trimPrefix(value) : value,
-            },
+                value
+            }
         };
     };
 }
